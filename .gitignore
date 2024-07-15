@@ -1,0 +1,26 @@
+# Cargo package files
+/target/
+**/*.rs.bk
+
+# Rust/Cargo specific files
+Cargo.lock
+*.rs.bk
+
+# IntelliJ IDEA project files
+.idea/
+*.iml
+
+# Visual Studio Code project files
+.vscode/
+*.code-workspace
+
+# macOS specific files
+.DS_Store
+
+# Node.js specific files
+node_modules/
+npm-debug.log
+
+# Other common files
+*.log
+*.tmp
