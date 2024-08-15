@@ -11,7 +11,10 @@ use std::io::{Write, Cursor};
 use std::path::{Path, PathBuf};
 use rocket_multipart_form_data::{MultipartFormDataOptions, MultipartFormData, MultipartFormDataField};
 use image::io::Reader as ImageReader;
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, ImageOutputFormat, GenericImageView};
+use std::process::Command;
+use std::fs;
+use rocket::tokio::time::{sleep, Duration};
 
 #[get("/")]
 fn index() -> &'static str {
@@ -22,6 +25,12 @@ fn index() -> &'static str {
 #[serde(crate = "rocket::serde")]
 struct Message {
     content: String,
+}
+
+fn save_image(image: &DynamicImage, path: &str) -> Result<(), std::io::Error> {
+    let mut file = File::create(path)?;
+    image.write_to(&mut file, ImageOutputFormat::Png).map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to save image"))?;
+    Ok(())
 }
 
 #[post("/upload", data = "<data>")]
@@ -53,19 +62,38 @@ async fn upload(content_type: &ContentType, data: Data<'_>) -> Result<String, &'
         Err(_) => return Err("Failed to read image format"),
     };
 
-    // 예제: PNG 이미지를 OBJ 데이터로 변환 (단순한 예시)
-    let (width, height) = image.dimensions();
-    let obj_data = format!(
-        "o Object\nv 0.0 0.0 0.0\nv {} 0.0 0.0\nv {} {} 0.0\nv 0.0 {} 0.0\nf 1 2 3 4\n",
-        width, width, height, height
-    );
+    let img_file_path = format!("../../meshrnn/meshrcnn/input/input.png");
+    if let Err(_) = save_image(&image, &img_file_path) {
+        return Err("Failed to save image");
+    }
+    //Ok(obj_file_path)
+    let python_command = Command::new("python")
+    .arg("demo/demo.py")
+    .arg("--config-file")
+    .arg("configs/pix3d/meshrcnn_R50_FPN.yaml")
+    .arg("--input")
+    .arg("./input/input.png")
+    .arg("--output")
+    .arg("output_demo")
+    .arg("--onlyhighest")
+    .arg("MODEL.WEIGHTS")
+    .arg("meshrcnn_S2_R50.pth")
+    .current_dir("../../meshrnn/meshrcnn/")
+    .output();
 
-    let obj_file_path = format!("./uploads/output.obj");
-    let mut obj_file = File::create(&obj_file_path).map_err(|_| "Failed to create OBJ file")?;
-    obj_file.write_all(obj_data.as_bytes()).map_err(|_| "Failed to write OBJ file")?;
+    match python_command {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
 
-    Ok(obj_file_path)
-
+            println!("Command succeeded with output:\n{}", stdout);
+            if !stderr.is_empty() {
+                println!("Command had errors:\n{}", stderr);
+            }
+            Ok("success".to_string()) // 성공적으로 완료된 경우 Ok 반환
+        },
+        Err(_) => Err("fail"),
+    }
 }
 #[get("/download/<file..>")]
 async fn download(file: PathBuf) -> Option<NamedFile> {
