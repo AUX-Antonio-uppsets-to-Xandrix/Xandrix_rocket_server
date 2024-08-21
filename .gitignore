@@ -24,3 +24,5 @@ npm-debug.log
 # Other common files
 *.log
 *.tmp
+p2m_server/target
+p2m_server/uploads
