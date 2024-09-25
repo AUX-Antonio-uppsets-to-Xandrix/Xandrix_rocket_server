@@ -1,4 +1,5 @@
 #[macro_use] extern crate rocket;
+#[macro_use] extern crate diesel;
 
 use rocket::fs::NamedFile;
 use rocket::http::ContentType;
@@ -15,6 +16,10 @@ use rocket::response::Responder;
 use rocket::{Request, Response};
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba, ImageOutputFormat};
 use image::imageops::{grayscale, rotate90, rotate180, rotate270};
+use diesel::prelude::*;
+use diesel::SqliteConnection;
+use rocket_sync_db_pools::database;
+use std::collections::HashMap;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -283,9 +288,120 @@ fn apply_threshold(img: &DynamicImage, threshold: f32) -> DynamicImage {
     DynamicImage::ImageRgba8(output_img)
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(crate = "rocket::serde")]
+struct RegisterRequest {
+    id: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(crate = "rocket::serde")]
+struct RegisterResponse {
+    uniqueId: i32,
+    userImageURL: String,
+    grayscale: i32,
+    brightness: i32,
+    threshold: i32,
+    rotation: i32,
+}
+
+#[database("sqlite_db")]
+struct DbConn(SqliteConnection);
+
+#[derive(Insertable)]
+#[diesel(table_name = users)]
+struct NewUser {
+    user_id: String,
+    password: String,
+    user_image_url: String,
+    grayscale: i32,
+    brightness: i32,
+    threshold: i32,
+    rotation: i32,
+}
+
+#[derive(Queryable, Identifiable, Debug)]
+#[diesel(table_name = users)]
+struct User {
+    id: i32,
+    user_id: String,
+    password: String,
+    user_image_url: String,
+    grayscale: i32,
+    brightness: i32,
+    threshold: i32,
+    rotation: i32,
+}
+table! {
+    users (id) {
+        id -> Integer,
+        user_id -> Text,
+        password -> Text,
+        user_image_url -> Text,
+        grayscale -> Integer,
+        brightness -> Integer,
+        threshold -> Integer,
+        rotation -> Integer,
+    }
+}
+
+#[post("/api/register", format = "json", data = "<register_request>")]
+async fn register(
+    conn: DbConn,
+    register_request: Json<RegisterRequest>,
+) -> Result<Json<RegisterResponse>, Json<HashMap<&'static str, &'static str>>> {
+    use self::users::dsl::*;
+
+    let register_request = register_request.into_inner();
+
+    let user_id_clone = register_request.id.clone(); // 사본을 만들어 사용
+    let existing_user = conn
+        .run(move |c| users.filter(user_id.eq(&user_id_clone)).first::<User>(c).optional())
+        .await;
+
+    if let Ok(Some(_)) = existing_user {
+        let mut error_response = HashMap::new();
+        error_response.insert("error", "이미 등록된 ID입니다.");
+        return Err(Json(error_response));
+    }
+
+    let new_user = NewUser {
+        user_id: register_request.id.clone(),
+        password: register_request.password.clone(),
+        user_image_url: "/noimage.png".to_string(),
+        grayscale: 0,
+        brightness: 50,
+        threshold: 0,
+        rotation: 0,
+    };
+    
+    conn.run(move |c| diesel::insert_into(users).values(&new_user).execute(c))
+        .await
+        .unwrap();
+
+    let user_id2 = conn
+        .run(move |c| users.filter(user_id.eq(&register_request.id)).select(id).first::<i32>(c))
+        .await
+        .unwrap();
+
+    let response = RegisterResponse {
+        uniqueId: user_id2,
+        userImageURL: "/noimage.png".to_string(),
+        grayscale: 0,
+        brightness: 50,
+        threshold: 0,
+        rotation: 0,
+    };
+
+    Ok(Json(response))
+}
+
 
 #[launch]
 fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![index, uploadObj, downloadObj, upload, download])
+
+    .attach(DbConn::fairing())  // 데이터베이스 연결 풀 첨부
+        .mount("/", routes![index, register, uploadObj, downloadObj, upload, download])
 }

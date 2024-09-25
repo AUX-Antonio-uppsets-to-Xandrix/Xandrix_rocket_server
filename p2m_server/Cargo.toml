@@ -6,7 +6,18 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+diesel = { version = "2.0.0", features = ["sqlite"] }
 rocket = { version = "0.5.0-rc.1", features = ["json"] }
 rocket-multipart-form-data = "0.10.7"
 
 image = "0.23.14" # 이미지 처리를 위한 라이브러리
+
+dotenvy = "0.15.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+rocket_sync_db_pools = { version = "0.1.0", features = ["diesel_sqlite_pool"] }
+
+
+[build-dependencies]
+diesel = { version = "2.0.0", features = ["sqlite"] }

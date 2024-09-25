@@ -1,0 +1,10 @@
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    user_image_url TEXT NOT NULL,
+    grayscale INTEGER NOT NULL DEFAULT 0,
+    brightness INTEGER NOT NULL DEFAULT 50,
+    threshold INTEGER NOT NULL DEFAULT 0,
+    rotation INTEGER NOT NULL DEFAULT 0
+);
